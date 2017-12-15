@@ -22,6 +22,12 @@ class MoneyPot(object):
 
 
 class Hand(object):
+    """
+    Python object which simulates a single round of Blackjack
+    It receives as inputs the current deck of cards, the strategy object and the bet
+
+    When called, it returns the outcome of the round "Win", "Lose" or "Push"
+    """
     def __init__(self, cards, strategy, bet_placed):
         self.cards = cards
         self.strategy = strategy
@@ -35,6 +41,9 @@ class Hand(object):
         dealers_2nd_card = self.cards.draw_a_card()
         your_hand = [your_1st_card, your_2nd_card]
         dealers_hand = [dealers_1st_card, dealers_2nd_card]
+        print ("Dealing first hand")
+        print ("Your hand", your_hand)
+        print ("Dealer shows a:", dealers_1st_card)
         return your_hand, dealers_hand
 
     def check_your_first_two_cards(self, your_cards, dealers_cards):
@@ -45,9 +54,9 @@ class Hand(object):
         dealers_hand = "None"
 
         if (card1 == card2):  # A pair of cards
-            if (2 <= int(card1) <= 10): # A pair of number cards
+            if (card1.isdigit()) and (2 <= int(card1) <= 10): # A pair of number cards
                 your_hand = "D" + card1
-            if (card1 == "J" or card1 == "Q", card1 == "K"): # A pair of figures
+            if (card1 == "J" or card1 == "Q" or card1 == "K"): # A pair of figures
                 your_hand = "D10"
             if (card1 == "A"):
                 your_hand = "DA"
@@ -88,7 +97,14 @@ class Hand(object):
         return your_hand, dealers_hand
 
     def get_value(self, your_cards):
+        """
+        Receives a list of cards defining your hand and return the numerical value
+        For instan
+        :param your_cards:
+        :return:
+        """
         your_value = 0
+        N_ace = 0
         for card in your_cards:
             if (card.isalpha()) & (card != "A"):
                 your_value += 10
@@ -96,6 +112,7 @@ class Hand(object):
                 your_value += int(card)
             if (card == "A"):
                 your_value += 11
+                N_ace += 1
 
         # If you are over 21, check if you have Aces
         # and downgrade them from 11 to 1 until you are under 21
@@ -104,6 +121,7 @@ class Hand(object):
             for card in your_cards:
                 if card == "A":
                     your_value -= 10
+                    N_ace -= 1
                 if your_value <= 21:
                     break
 
@@ -122,9 +140,11 @@ class Hand(object):
             dealer, useless = self.check_your_first_two_cards(dealers_cards, dealers_cards)
             if dealer != "Blackjack":
                 self.hand_outcome = "Win"
-                print("Player Wins by Blackjack")
+                print ("Player Wins by Blackjack")
                 return self.hand_outcome
             if dealer == "Blackjack":
+                print ("Dealer shows his hand", dealers_cards)
+                print ("Both Player and Dealer have Blackjack")
                 self.hand_outcome = "Push"
         else:
             first_decision = self.strategy(your_hand, dealers_hand)
@@ -140,19 +160,23 @@ class Hand(object):
 
         if first_decision == "Double":
             self.bet_placed *= 2
+            print("Players draws a card")
             your_cards.append(self.cards.draw_a_card())
+            print("Player's hand", your_cards)
             your_new_value = self.get_value(your_cards)
             if your_new_value <= 21:
                 final_decision = "Stand"
             else:
                 self.hand_outcome = "Lose"
                 print("Player Loses. Over 21")
-                return  self.hand_outcome
+                return self.hand_outcome
 
         if first_decision == "Hit":
             final_decision = "Hit"
             while final_decision == "Hit":
+                print ("Players draws a card")
                 your_cards.append(self.cards.draw_a_card())
+                print ("Player's hand", your_cards)
                 your_new_value = self.get_value(your_cards)
                 if your_new_value >= 21:
                     self.hand_outcome = "Lose"
@@ -161,10 +185,15 @@ class Hand(object):
                 else:
                     final_decision = self.strategy(str(your_new_value), dealers_cards[0])
 
+        if first_decision == "Stand":
+            your_new_value = self.get_value(your_cards)
+            final_decision = "Stand"
+
         # You stand. Dealer's turn to play
         if final_decision == "Stand":
             # Check if the dealer has Blackjack
             dealer, useless = self.check_your_first_two_cards(dealers_cards, dealers_cards)
+            print ("Dealer shows his hand", dealers_cards)
             if dealer == "Blackjack":
                 print("Player Loses. Dealer has Blackjack")
                 self.hand_outcome = "Lose"
@@ -174,12 +203,21 @@ class Hand(object):
                 value = initial_value
                 while value <= 17: # Dealer must play up to 17
                     dealers_cards.append(self.cards.draw_a_card())
+                    print ("Dealer draws a card")
+                    print ("Dealers hand", dealers_cards)
                     value = self.get_value(dealers_cards)
                     if (value > 21): # Dealer busted
                         print("Player Wins. Dealer busted")
                         self.hand_outcome = "Win"
                         return self.hand_outcome
+                    if (17 <= value <= 21):
+                        break
                 if (17 <= value <= 21): # Dealer can decide whether to Stand
+                    if (your_new_value == value):
+                    # Dealer prefers to stand
+                        print("Player and Dealer have the same hand. Push")
+                        self.hand_outcome = "Push"
+                        return self.hand_outcome
                     if (your_new_value < value <= 21):
                     # Dealer has better hand, decides to Stand
                         print("Player Loses. Dealer has better hand")
@@ -187,7 +225,9 @@ class Hand(object):
                         return self.hand_outcome
                     while your_new_value >= value:
                         # Dealer keeps playing
+                        print("Dealer draws a card")
                         dealers_cards.append(self.cards.draw_a_card())
+                        print("Dealers hand", dealers_cards)
                         value = self.get_value(dealers_cards)
                         if (value > 21): # Dealer busted
                             print("Player Wins. Dealer busted")
@@ -257,6 +297,11 @@ class Game(object):
 
 
 class Cards(object):
+    """
+    Python object which takes care of the decks of cards
+    It puts together a set of N decks and shuffles the set.
+    Cards.draw_a_card() takes care of the dealing of cards
+    """
     def __init__(self, N_decks):
         self.N_decks = N_decks
         self.decks = self.get_N_decks()
@@ -295,8 +340,13 @@ class Cards(object):
         return drawn_card
 
 class Strategy(object):
+    """
+    Python object which takes care of the Blackjack Strategy
+    It contains a strategy chart which takes as input both the Player's and Dealer's hand
+    and returns a decision like "Hit", "Stand", "Double", "Split"
+    """
     def __init__(self, mode="Agressive"):
-        self.mode = mode
+        self.mode = mode    #FIX ME. Adapt strategy for ambiguous cases depending on Agressiveness
 
     def strategy_chart(self, your_hand, dealers_hand):
         decision = "UNDECIDED"
@@ -350,9 +400,9 @@ class Strategy(object):
             if (your_hand == "A6") & (3 <= int(dealers_hand) <= 6):
                 decision = "Double"
             if (your_hand == "A7"):
-                if (dealers_hand == 2 or dealers_hand == 7 or dealers_hand == 8):
+                if (int(dealers_hand) == 2 or int(dealers_hand) == 7 or int(dealers_hand) == 8):
                     decision = "Stand"
-                if (3 <= dealers_hand <= 6):
+                if (3 <= int(dealers_hand) <= 6):
                     decision = "Double"
             if (your_hand == "A8"):
                 decision = "Stand"
@@ -366,6 +416,7 @@ class Strategy(object):
 
     def __call__(self, your_hand, dealers_hand):
         hand_decision = self.strategy_chart(your_hand, dealers_hand)
+        print ("Calling Strategy")
         print ("Dealers hand:", dealers_hand)
         print ("Players hand:", your_hand)
         print ("Players decides to:", hand_decision)
