@@ -15,7 +15,7 @@ class MoneyPot(object):
 
     def place_bet(self, amount):
         if amount < self.min_bet:
-            print ("%d not allowed. Minimum bet: %d" %(amount, self.min_bet))
+            print("%d not allowed. Minimum bet: %d" %(amount, self.min_bet))
             self.current_pot -= self.min_bet
         else:
             self.current_pot -= amount
@@ -28,11 +28,42 @@ class Hand(object):
 
     When called, it returns the outcome of the round "Win", "Lose" or "Push"
     """
-    def __init__(self, cards, strategy, bet_placed):
+    def __init__(self, cards, strategy, money_pot, bet_placed):
         self.cards = cards
         self.strategy = strategy
         self.bet_placed = bet_placed
         self.hand_outcome = "Lose"
+        self.money_pot = money_pot
+
+    def get_value(self, your_cards):
+        """
+        Receives a list of cards defining your hand and return the numerical value
+        """
+        your_value = 0
+        N_ace = 0   # Keeps track of the Aces set to 11
+        for card in your_cards:
+            if (card.isalpha()) & (card != "A"):
+                your_value += 10
+            if (card.isdigit()):
+                your_value += int(card)
+            if (card == "A"):
+                your_value += 11
+                N_ace += 1
+
+        # If you are over 21, check if you have Aces
+        # and downgrade them from 11 to 1 until you are under 21
+        if (your_value > 21):
+            for card in your_cards:
+                if card == "A":
+                    your_value -= 10
+                    N_ace -= 1
+                if your_value <= 21:
+                    break
+
+        if your_value == 0:
+            raise Exception("Failure to update value of your hand")
+
+        return your_value, N_ace
 
     def deal_first_hand(self):
         your_1st_card = self.cards.draw_a_card()
@@ -41,9 +72,9 @@ class Hand(object):
         dealers_2nd_card = self.cards.draw_a_card()
         your_hand = [your_1st_card, your_2nd_card]
         dealers_hand = [dealers_1st_card, dealers_2nd_card]
-        print ("Dealing first hand")
-        print ("Your hand", your_hand)
-        print ("Dealer shows a:", dealers_1st_card)
+        print("Dealing first hand")
+        print("Your hand", your_hand)
+        print("Dealer shows a:", dealers_1st_card)
         return your_hand, dealers_hand
 
     def check_your_first_two_cards(self, your_cards, dealers_cards):
@@ -96,40 +127,6 @@ class Hand(object):
 
         return your_hand, dealers_hand
 
-    def get_value(self, your_cards):
-        """
-        Receives a list of cards defining your hand and return the numerical value
-        For instan
-        :param your_cards:
-        :return:
-        """
-        your_value = 0
-        N_ace = 0
-        for card in your_cards:
-            if (card.isalpha()) & (card != "A"):
-                your_value += 10
-            if (card.isdigit()):
-                your_value += int(card)
-            if (card == "A"):
-                your_value += 11
-                N_ace += 1
-
-        # If you are over 21, check if you have Aces
-        # and downgrade them from 11 to 1 until you are under 21
-        # or until all have been downgraded
-        if (your_value > 21):
-            for card in your_cards:
-                if card == "A":
-                    your_value -= 10
-                    N_ace -= 1
-                if your_value <= 21:
-                    break
-
-        if your_value == 0:
-            raise Exception ("Failure to update value of your hand")
-
-        return your_value
-
     def __call__(self, *args, **kwargs):
         # First round of cards
         your_cards, dealers_cards = self.deal_first_hand()
@@ -140,30 +137,32 @@ class Hand(object):
             dealer, useless = self.check_your_first_two_cards(dealers_cards, dealers_cards)
             if dealer != "Blackjack":
                 self.hand_outcome = "Win"
-                print ("Player Wins by Blackjack")
+                print("Player Wins by Blackjack")
                 return self.hand_outcome
             if dealer == "Blackjack":
-                print ("Dealer shows his hand", dealers_cards)
-                print ("Both Player and Dealer have Blackjack")
+                print("Dealer shows his hand", dealers_cards)
+                print("Both Player and Dealer have Blackjack")
                 self.hand_outcome = "Push"
+                return self.hand_outcome
         else:
-            first_decision = self.strategy(your_hand, dealers_hand)
+            first_decision = self.strategy(your_hand, dealers_hand, 1)
 
         # Second round
         if first_decision == "Surrender":
             pass
-            # FIX ME. Future implementation of Surrender
+            # FIXME. Future implementation of Surrender
 
         if first_decision == "Split":
             pass
-            # FIX ME. Future implementation of Split
+            # FIXME. Future implementation of Split
 
         if first_decision == "Double":
+            self.money_pot.place_bet(self.bet_placed)
             self.bet_placed *= 2
             print("Players draws a card")
             your_cards.append(self.cards.draw_a_card())
             print("Player's hand", your_cards)
-            your_new_value = self.get_value(your_cards)
+            your_new_value = self.get_value(your_cards)[0]
             if your_new_value <= 21:
                 final_decision = "Stand"
             else:
@@ -173,51 +172,80 @@ class Hand(object):
 
         if first_decision == "Hit":
             final_decision = "Hit"
+            round_n = 1
             while final_decision == "Hit":
-                print ("Players draws a card")
+                print("Players draws a card")
                 your_cards.append(self.cards.draw_a_card())
-                print ("Player's hand", your_cards)
-                your_new_value = self.get_value(your_cards)
-                if your_new_value >= 21:
+                round_n += 1
+                print("Player's hand", your_cards)
+                your_new_value = self.get_value(your_cards)[0]
+                if your_new_value > 21:
                     self.hand_outcome = "Lose"
                     print("Player Loses. Over 21")
                     return self.hand_outcome
+                if your_new_value == 21:
+                    final_decision = "Stand"
+                    print("Player stands")
                 else:
-                    final_decision = self.strategy(str(your_new_value), dealers_cards[0])
+                    final_decision = self.strategy(str(your_new_value), dealers_cards[0], round_n)
 
         if first_decision == "Stand":
-            your_new_value = self.get_value(your_cards)
+            your_new_value = self.get_value(your_cards)[0]
             final_decision = "Stand"
 
         # You stand. Dealer's turn to play
         if final_decision == "Stand":
             # Check if the dealer has Blackjack
             dealer, useless = self.check_your_first_two_cards(dealers_cards, dealers_cards)
-            print ("Dealer shows his hand", dealers_cards)
+            print("Dealer shows his hand", dealers_cards)
+
             if dealer == "Blackjack":
                 print("Player Loses. Dealer has Blackjack")
                 self.hand_outcome = "Lose"
                 return self.hand_outcome
+
             else: # Dealer hasn't got Blackjack, decides to play
-                initial_value = self.get_value(dealers_cards)
+                initial_value, N_ace = self.get_value(dealers_cards)
                 value = initial_value
+
                 while value <= 17: # Dealer must play up to 17
                     dealers_cards.append(self.cards.draw_a_card())
-                    print ("Dealer draws a card")
-                    print ("Dealers hand", dealers_cards)
-                    value = self.get_value(dealers_cards)
+                    print("Dealer draws a card")
+                    print("Dealers hand", dealers_cards)
+                    value, N_ace = self.get_value(dealers_cards)
                     if (value > 21): # Dealer busted
                         print("Player Wins. Dealer busted")
                         self.hand_outcome = "Win"
                         return self.hand_outcome
                     if (17 <= value <= 21):
                         break
+
                 if (17 <= value <= 21): # Dealer can decide whether to Stand
                     if (your_new_value == value):
-                    # Dealer prefers to stand
-                        print("Player and Dealer have the same hand. Push")
-                        self.hand_outcome = "Push"
-                        return self.hand_outcome
+                        if N_ace >= 1: # Dealer is still counting some Aces as 11, decides to hit
+                            while N_ace >= 0:
+                                dealers_cards.append(self.cards.draw_a_card())
+                                print("Dealer draws a card")
+                                print("Dealers hand", dealers_cards)
+                                value, N_ace = self.get_value(dealers_cards)
+                                if value > 21:
+                                    print("Player Wins. Dealer busted")
+                                    self.hand_outcome = "Win"
+                                    return self.hand_outcome
+                                if (17 <= value <= 21):
+                                    if (your_new_value < value):
+                                        print("Player Loses. Dealer has better hand")
+                                        self.hand_outcome = "Lose"
+                                        return self.hand_outcome
+                                    if (your_new_value == value) and (N_ace == 0):
+                                        print("Player and Dealer have the same hand. Push")
+                                        self.hand_outcome = "Push"
+                                        return self.hand_outcome
+                        else:
+                            # Dealer prefers to stand
+                            print("Player and Dealer have the same hand. Push")
+                            self.hand_outcome = "Push"
+                            return self.hand_outcome
                     if (your_new_value < value <= 21):
                     # Dealer has better hand, decides to Stand
                         print("Player Loses. Dealer has better hand")
@@ -228,7 +256,7 @@ class Hand(object):
                         print("Dealer draws a card")
                         dealers_cards.append(self.cards.draw_a_card())
                         print("Dealers hand", dealers_cards)
-                        value = self.get_value(dealers_cards)
+                        value = self.get_value(dealers_cards)[0]
                         if (value > 21): # Dealer busted
                             print("Player Wins. Dealer busted")
                             self.hand_outcome = "Win"
@@ -241,27 +269,30 @@ class Hand(object):
 
         # Check for loopholes
         if self.hand_outcome == None:
-            raise Exception ("Failure to decide Hand")
+            raise Exception("Failure to decide Hand")
 
         return self.hand_outcome
 
 class Game(object):
-    def __init__(self, N_decks, initial_money, min_bet = 10, pay_ratio = 3./2.):
+    def __init__(self, N_decks, initial_money, min_bet=10, pay_ratio=3./2.):
         self.N_decks = N_decks
         self.cards = Cards(N_decks)
         self.strategy = Strategy()
         self.money_pot = MoneyPot(starting_amount=initial_money, min_bet=min_bet)
         self.min_bet = min_bet
         self.pay_ratio = pay_ratio
+        self.hand_counter = 0
         self.victory_counter = []
         self.money_counter = []
 
-
-
     def play_game(self):
-        while self.min_bet >= self.money_pot.current_pot:
+        while self.min_bet <= self.money_pot.current_pot:
             bet = self.min_bet
-            new_hand = Hand(self.cards, self.strategy, bet)
+            self.money_pot.place_bet(amount=bet)
+            self.hand_counter += 1
+            print("Starting Hand #%d" %self.hand_counter)
+            new_hand = Hand(self.cards, self.strategy, self.money_pot, bet)
+            new_hand()
             if new_hand.hand_outcome == "Win":
                 self.money_pot.current_pot += np.floor(self.pay_ratio * new_hand.bet_placed)
             if new_hand.hand_outcome == "Lose":
@@ -271,30 +302,32 @@ class Game(object):
             self.victory_counter.append(new_hand.hand_outcome)
             self.money_counter.append(self.money_pot.current_pot)
 
-        print ("End of Game. Statistics:")
+        print("End of Game. Statistics:")
         self.get_statistics()
-        plt.figure()
-        plt.plot(self.money_counter)
-        plt.xlabel("Hand #")
-        plt.ylabel("Money Pot")
-        plt.show()
+        # plt.figure()
+        # plt.plot(self.money_counter)
+        # plt.xlabel("Hand #")
+        # plt.ylabel("Money Pot")
+        # plt.show()
 
     def get_statistics(self):
-        won, lost, pushed = 0, 0, 0
+        self.won, self.lost, self.pushed = 0, 0, 0
         hands_played = len(self.victory_counter)
-        print ("Total hands played: %d" %hands_played)
+        print("Total hands played: %d" %hands_played)
         for hand in self.victory_counter:
             if hand == "Win":
-                won += 1
+                self.won += 1
             if hand == "Lose":
-                lost += 1
+                self.lost += 1
             else:
-                pushed += 1
-        print ("Won: %d" %won)
-        print ("Lost: %d" %lost)
-        print("Pushed: %d" %pushed)
+                self.pushed += 1
+        print("Won: %d" %self.won)
+        print("Lost: %d" %self.lost)
+        print("Pushed: %d" %self.pushed)
 
-
+    def __call__(self, *args, **kwargs):
+        self.play_game()
+        return self.money_counter, self.won, self.lost, self.pushed
 
 class Cards(object):
     """
@@ -308,6 +341,14 @@ class Cards(object):
         self.shuffle_deck(self.decks)
 
     def one_deck(self):
+        """
+        Creates a single deck containing 52 cards
+        Returns a list with the cards
+        ['2', ..., '10', 'J', 'Q', 'K', 'A',
+         '2', ..., '10', 'J', 'Q', 'K', 'A',
+         ...
+         '2', ..., '10', 'J', 'Q', 'K', 'A']
+        """
         deck = []
         numbers = np.arange(2, 11)
         for digit in numbers:
@@ -334,7 +375,7 @@ class Cards(object):
             print("Replenishing the deck")
             self.decks = self.get_N_decks()
             self.shuffle_deck(self.decks)
-            # FIX ME: when "CountingCards" allowed, update the number of decks remaining
+            # FIXME: when "CountingCards" allowed, update the number of decks remaining
         drawn_card = self.decks[0]
         self.decks = self.decks[1:]
         return drawn_card
@@ -346,7 +387,7 @@ class Strategy(object):
     and returns a decision like "Hit", "Stand", "Double", "Split"
     """
     def __init__(self, mode="Agressive"):
-        self.mode = mode    #FIX ME. Adapt strategy for ambiguous cases depending on Agressiveness
+        self.mode = mode    #FIXME. Adapt strategy for ambiguous cases depending on Agressiveness
 
     def strategy_chart(self, your_hand, dealers_hand):
         decision = "UNDECIDED"
@@ -369,6 +410,8 @@ class Strategy(object):
 
         if ((your_hand)[0] == "D"): # Pair of numbers
             decision = "Hit"
+            if (dealers_hand.isalpha()):
+                dealers_hand = str(10)
             if (your_hand == "D2" or your_hand == "D3") & (int(dealers_hand) <= 7):
                 decision = "Split"
             if (your_hand == "D4") & (5 <= int(dealers_hand) <= 6):
@@ -393,6 +436,8 @@ class Strategy(object):
 
         if (your_hand[0] == "A"):  # Soft (Ace + Card)
             decision = "Hit"
+            if (dealers_hand.isalpha()):
+                dealers_hand = str(10)
             if (your_hand == "A2" or your_hand == "A3") & (5 <= int(dealers_hand) <= 6):
                 decision = "Double"
             if (your_hand == "A4" or your_hand == "A5") & (4 <= int(dealers_hand) <= 6):
@@ -414,11 +459,37 @@ class Strategy(object):
 
         return decision
 
-    def __call__(self, your_hand, dealers_hand):
+    def __call__(self, your_hand, dealers_hand, round_n):
         hand_decision = self.strategy_chart(your_hand, dealers_hand)
-        print ("Calling Strategy")
-        print ("Dealers hand:", dealers_hand)
-        print ("Players hand:", your_hand)
-        print ("Players decides to:", hand_decision)
-        return hand_decision
+        if round_n == 1:
+            if hand_decision == "Split": #FIX ME, split not implemented yet
+                final_hand_decision = "Hit"
+                print("Calling Strategy")
+                print("Dealers hand:", dealers_hand)
+                print("Players hand:", your_hand)
+                print("Strategy suggests:", hand_decision)
+                print("Split NOT implemented yet")
+                print("Players decides to:", final_hand_decision)
+            else:
+                final_hand_decision = hand_decision
+                print("Calling Strategy")
+                print("Dealers hand:", dealers_hand)
+                print("Players hand:", your_hand)
+                print("Players decides to:", hand_decision)
+        if round_n != 1:
+            if (hand_decision == "Hit") or (hand_decision == "Stand"):
+                final_hand_decision = hand_decision
+                print("Calling Strategy")
+                print("Dealers hand:", dealers_hand)
+                print("Players hand:", your_hand)
+                print("Players decides to:", hand_decision)
+            if (hand_decision == "Double") or (hand_decision == "Split"):
+                final_hand_decision = "Hit"
+                print("Calling Strategy")
+                print("Dealers hand:", dealers_hand)
+                print("Players hand:", your_hand)
+                print("Strategy suggests:", hand_decision)
+                print("Not possible. Not first round. Final decision:", final_hand_decision)
+
+        return final_hand_decision
 
